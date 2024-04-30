@@ -324,7 +324,7 @@ if __name__ == '__main__':
     weight_decay = 0.0001
     lr_step = 0.1
     dropout_rate = 0.3
-    schedule = [100, 150]
+    schedule = [100, 150, 175]
     lr = 0.1
     # Create an instance of the CNN model
     model = ResNet(ResidualBlock, num_blocks=num_blocks,
