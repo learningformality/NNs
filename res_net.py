@@ -18,12 +18,14 @@ if __name__ == '__main__':
         transforms.RandomCrop(32, padding=4),
         transforms.RandomHorizontalFlip(),
         transforms.ToTensor(),
-        transforms.Normalize((0.4914, 0.4822, 0.4465), (0.2023, 0.1994, 0.2010)),
+        transforms.Normalize((0.4914, 0.4822, 0.4465),
+                             (0.2023, 0.1994, 0.2010)),
     ])
 
     transform_test = transforms.Compose([
         transforms.ToTensor(),
-        transforms.Normalize((0.4914, 0.4822, 0.4465), (0.2023, 0.1994, 0.2010)),
+        transforms.Normalize((0.4914, 0.4822, 0.4465),
+                             (0.2023, 0.1994, 0.2010)),
     ])
 
     '''
@@ -51,10 +53,10 @@ if __name__ == '__main__':
     def remove_inf_values(tensor):
         # Create a mask for non-infinite values
         mask = torch.isfinite(tensor)
-        
+
         # Apply the mask to the tensor to remove infinite values
         tensor = tensor[mask]
-        
+
         return tensor
 
     class CrossEntropyConf(nn.Module):
@@ -67,13 +69,11 @@ if __name__ == '__main__':
 
         def forward(self, input, target):
 
-            epsilon = 1e-7
-
             # Apply softmax to the input
             softmax_output = nn.functional.softmax(input, dim=1)
 
             # Apply logit function to the softmax output
-            logits = torch.log(softmax_output / (1 - softmax_output + epsilon))
+            logits = torch.special.logit(softmax_output, eps=1e-7)
 
             # Compute cross-entropy loss
             loss = nn.functional.nll_loss(
@@ -90,13 +90,11 @@ if __name__ == '__main__':
 
         def forward(self, input, target):
 
-            epsilon = 1e-7
-
             # Apply softmax to the input
             softmax_output = nn.functional.softmax(input, dim=1)
 
             # Apply logit function to the softmax output
-            logits = torch.log(softmax_output / (1 - softmax_output + epsilon))
+            logits = torch.special.logit(softmax_output, eps=1e-7)
 
             # Create a mask to ignore the terms that do not correspond to the target class
             mask = torch.zeros_like(logits)
@@ -115,7 +113,7 @@ if __name__ == '__main__':
             return loss
 
     class CrossEntropyConfMask0(nn.Module):
-        
+
         def __init__(self, reduction='mean'):
 
             super(CrossEntropyConfMask0, self).__init__()
@@ -124,13 +122,11 @@ if __name__ == '__main__':
 
         def forward(self, input, target):
 
-            epsilon = 1e-7
-
             # Apply softmax to the input
             softmax_output = nn.functional.softmax(input, dim=1)
 
             # Apply logit function to the softmax output
-            logits = torch.log(softmax_output / (1 - softmax_output + epsilon))
+            logits = torch.special.logit(softmax_output, eps=1e-7)
 
             # Create a mask to ignore the terms that do not correspond to the target class
             mask = torch.zeros_like(logits)
@@ -166,7 +162,7 @@ if __name__ == '__main__':
                 loss = loss.sum()
 
             return loss
-        
+
     class CrossEntropyLossMask0(nn.Module):
 
         def __init__(self, reduction='mean'):
@@ -236,16 +232,19 @@ if __name__ == '__main__':
     class ResidualBlock(nn.Module):
         def __init__(self, in_channels, out_channels, stride=1, dropout_rate=0.0):
             super(ResidualBlock, self).__init__()
-            self.conv1 = nn.Conv2d(in_channels, out_channels, kernel_size=3, stride=stride, padding=1, bias=False)
+            self.conv1 = nn.Conv2d(
+                in_channels, out_channels, kernel_size=3, stride=stride, padding=1, bias=False)
             self.bn1 = nn.BatchNorm2d(out_channels)
-            self.conv2 = nn.Conv2d(out_channels, out_channels, kernel_size=3, stride=1, padding=1, bias=False)
+            self.conv2 = nn.Conv2d(
+                out_channels, out_channels, kernel_size=3, stride=1, padding=1, bias=False)
             self.bn2 = nn.BatchNorm2d(out_channels)
             self.dropout = nn.Dropout(dropout_rate)
 
             self.shortcut = nn.Sequential()
             if stride != 1 or in_channels != out_channels:
                 self.shortcut = nn.Sequential(
-                    nn.Conv2d(in_channels, out_channels, kernel_size=1, stride=stride, bias=False),
+                    nn.Conv2d(in_channels, out_channels,
+                              kernel_size=1, stride=stride, bias=False),
                     nn.BatchNorm2d(out_channels)
                 )
 
@@ -263,7 +262,8 @@ if __name__ == '__main__':
             self.in_channels = 64
             self.dropout_rate = dropout_rate
 
-            self.conv1 = nn.Conv2d(3, 64, kernel_size=3, stride=1, padding=1, bias=False)
+            self.conv1 = nn.Conv2d(3, 64, kernel_size=3,
+                                   stride=1, padding=1, bias=False)
             self.bn1 = nn.BatchNorm2d(64)
             self.layer1 = self._make_layer(block, 64, num_blocks[0], stride=1)
             self.layer2 = self._make_layer(block, 128, num_blocks[1], stride=2)
@@ -276,7 +276,8 @@ if __name__ == '__main__':
             strides = [stride] + [1] * (num_blocks - 1)
             layers = []
             for stride in strides:
-                layers.append(block(self.in_channels, out_channels, stride, self.dropout_rate))
+                layers.append(
+                    block(self.in_channels, out_channels, stride, self.dropout_rate))
                 self.in_channels = out_channels
             return nn.Sequential(*layers)
 
@@ -309,7 +310,7 @@ if __name__ == '__main__':
     trainset = torchvision.datasets.CIFAR10(
         root='./data', train=True, transform=transform_train)
     trainloader = torch.utils.data.DataLoader(
-        trainset, batch_size=64, shuffle=False, num_workers=4, persistent_workers=True, prefetch_factor=4, pin_memory=True)
+        trainset, batch_size=64, shuffle=False, num_workers=2, persistent_workers=True, prefetch_factor=4, pin_memory=True)
     trainloader0 = torch.utils.data.DataLoader(
         trainset, batch_size=2000, shuffle=False, num_workers=2, persistent_workers=True, prefetch_factor=2, pin_memory=True)
 
@@ -317,25 +318,28 @@ if __name__ == '__main__':
         root='./data', train=False, transform=transform_test)
     testloader = torch.utils.data.DataLoader(
         testset, batch_size=2000, shuffle=False, num_workers=2, persistent_workers=True, prefetch_factor=2, pin_memory=True)
-    
-    num_epochs = 200
+
+    num_epochs = 100
     num_blocks = [3, 4, 6, 3]
     weight_decay = 0.0005
     lr_step = 0.1
     dropout_rate = 0.3
-    schedule = [100, 150]
+    schedule = [50, 75]
     lr = 0.1
     # Create an instance of the CNN model
-    model = ResNet(ResidualBlock, num_blocks=num_blocks, dropout_rate=dropout_rate).cuda()
+    model = ResNet(ResidualBlock, num_blocks=num_blocks,
+                   dropout_rate=dropout_rate).cuda()
 
     # Define the loss function and optimizer
-    criterion2 = CrossEntropyLossMask0().cuda()
-    criterion1 = CrossEntropyConfMask0().cuda()
-    criterion0 = CrossEntropyConfMask().cuda()
-    criterion = CrossEntropyLossMask().cuda()
+    criterion1 = CrossEntropyLossMask0().cuda()
+    criterion2 = CrossEntropyConfMask0().cuda()
+    criterion = CrossEntropyConfMask().cuda()
+    criterion0 = CrossEntropyLossMask().cuda()
     # optimizer = optim.SGD(model.parameters(), lr=0.1, momentum=.9, nesterov=True, weight_decay=5e-4)
-    optimizer = optim.SGD(model.parameters(), lr=lr, weight_decay=weight_decay, momentum=0.9)
-    scheduler = optim.lr_scheduler.MultiStepLR(optimizer, schedule, gamma=lr_step)
+    optimizer = optim.SGD(model.parameters(), lr=lr,
+                          weight_decay=weight_decay, momentum=0.9)
+    scheduler = optim.lr_scheduler.MultiStepLR(
+        optimizer, schedule, gamma=lr_step)
     a = torch.tensor(0.1)
     torch.manual_seed(0)
     np.random.seed(0)
@@ -351,13 +355,13 @@ if __name__ == '__main__':
     test_accs = torch.zeros((num_epochs, 2))
     t0 = time.time()
     torch.backends.cudnn.benchmark = True
-    clip_threshold = 0.3
+    clip_threshold = 2
     progress_bar = tqdm(range(num_epochs), desc="Training", unit="epoch")
 
     for epoch in progress_bar:
 
         model.train()
-        
+
         running_loss = 0.0
         running_conf = 0.0
         running_test_loss = 0.0
@@ -379,8 +383,8 @@ if __name__ == '__main__':
                 loss = criterion(outputs, labels)
 
             scaler.scale(loss).backward()
-            #scaler.unscale_(optimizer)
-            #nn.utils.clip_grad_norm_(model.parameters(), clip_threshold)
+            scaler.unscale_(optimizer)
+            nn.utils.clip_grad_norm_(model.parameters(), clip_threshold)
             scaler.step(optimizer)
             scaler.update()
 
@@ -394,18 +398,18 @@ if __name__ == '__main__':
 
                 images, labels = data[0].cuda(
                     non_blocking=True), data[1].cuda(non_blocking=True)
-                
+
                 with autocast():
 
                     outputs = model(images)
 
                     loss = criterion(outputs, labels)
-                    conf = criterion0(outputs, labels)    
+                    conf = criterion0(outputs, labels)
 
                 _, predicted = torch.max(outputs.data, 1)
                 total += labels.size(0)
                 correct += (predicted == labels).sum().item()
-                
+
                 running_conf += conf.item()
                 running_loss += loss.item()
 
@@ -435,18 +439,26 @@ if __name__ == '__main__':
             print(
                 f'Epoch [{epoch}/{num_epochs}], Train Accuracy: {100 * correct / total:.5f}, Test Accuracy: {100 * correct_test / total_test:.5f}')
             print(
-                f'Epoch [{epoch}/{num_epochs}], Loss: {running_loss / len(trainloader0):.5f}, Confidence: {running_conf / len(trainloader0):.5f}')
+                f'Epoch [{epoch}/{num_epochs}], Train Loss: {running_loss / len(trainloader0):.5f}, Train Confidence: {running_conf / len(trainloader0):.5f}')
+            t1 = time.time()
+            print(
+                f'Epoch [{epoch}/{num_epochs}], Test Loss: {running_test_loss / len(testloader):.5f}, Test Confidence: {running_test_conf / len(testloader):.5f}')
             t1 = time.time()
             print(f'Time for 10 epochs: {t1 - t0}')
             t0 = time.time()
 
         confs[epoch] = torch.tensor([epoch, running_conf / len(trainloader0)])
         losses[epoch] = torch.tensor([epoch, running_loss / len(trainloader0)])
-        test_confs[epoch] = torch.tensor([epoch, running_test_conf / len(testloader)])
-        test_losses[epoch] = torch.tensor([epoch, running_test_loss / len(testloader)])
-        gen_confs[epoch] = torch.tensor([epoch, np.abs(running_test_conf / len(testloader) - running_conf / len(trainloader0))])
-        gen_losses[epoch] = torch.tensor([epoch, np.abs(running_test_loss / len(testloader) - running_loss / len(trainloader0))])
-        gen_acc[epoch] = torch.tensor([epoch, np.abs(100 * (1 - (correct_test / total_test) - (1 - (correct / total))))])
+        test_confs[epoch] = torch.tensor(
+            [epoch, running_test_conf / len(testloader)])
+        test_losses[epoch] = torch.tensor(
+            [epoch, running_test_loss / len(testloader)])
+        gen_confs[epoch] = torch.tensor([epoch, np.abs(
+            running_test_conf / len(testloader) - running_conf / len(trainloader0))])
+        gen_losses[epoch] = torch.tensor([epoch, np.abs(
+            running_test_loss / len(testloader) - running_loss / len(trainloader0))])
+        gen_acc[epoch] = torch.tensor([epoch, np.abs(
+            100 * (1 - (correct_test / total_test) - (1 - (correct / total))))])
         train_accs[epoch] = torch.tensor([epoch, correct / total])
         test_accs[epoch] = torch.tensor([epoch, correct_test / total_test])
 
@@ -472,13 +484,13 @@ if __name__ == '__main__':
 
             images, labels = data[0].cuda(
                 non_blocking=True), data[1].cuda(non_blocking=True)
-            
+
             with autocast():
 
-                    outputs = model(images)
+                outputs = model(images)
 
-                    loss = criterion(outputs, labels)
-                    conf = criterion0(outputs, labels)  
+                loss = criterion(outputs, labels)
+                conf = criterion0(outputs, labels)
 
             _, predicted = torch.max(outputs.data, 1)
             total += labels.size(0)
@@ -487,13 +499,14 @@ if __name__ == '__main__':
                 (logits_train, criterion1(outputs, labels)), 0)
             losses_train = torch.cat(
                 (losses_train, criterion2(outputs, labels)), 0)
-            
+
             running_conf += conf.item()
             running_loss += loss.item()
 
     print(f'Accuracy on the train set: {100 * correct / total:.2f}%')
     print(f'Loss on the train set: {running_loss / len(trainloader0):.2f}')
-    print(f'Confidence on the train set: {running_conf / len(trainloader0):.2f}')
+    print(f'Confidence on the train set: {
+          running_conf / len(trainloader0):.2f}')
 
     correct_test = 0
     total_test = 0
@@ -504,13 +517,13 @@ if __name__ == '__main__':
 
             images, labels = data[0].cuda(
                 non_blocking=True), data[1].cuda(non_blocking=True)
-            
+
             with autocast():
 
-                    outputs = model(images)
+                outputs = model(images)
 
-                    loss = criterion(outputs, labels)
-                    conf = criterion0(outputs, labels) 
+                loss = criterion(outputs, labels)
+                conf = criterion0(outputs, labels)
 
             _, predicted = torch.max(outputs.data, 1)
             total_test += labels.size(0)
@@ -519,16 +532,19 @@ if __name__ == '__main__':
                 (logits_test, criterion1(outputs, labels)), 0)
             losses_test = torch.cat(
                 (losses_test, criterion2(outputs, labels)), 0)
-                        
+
             running_test_conf += conf.item()
             running_test_loss += loss.item()
 
     print(f'Accuracy on the test set: {100 * correct_test / total_test:.2f}%')
     print(f'Loss on the test set: {running_test_loss / len(testloader):.2f}')
-    print(f'Confidence on the test set: {running_test_conf / len(testloader):.2f}')
+    print(f'Confidence on the test set: {
+          running_test_conf / len(testloader):.2f}')
 
-    print(f'Generalization error of CE loss: {np.abs(running_test_loss / len(testloader) - running_loss / len(trainloader0))}')
-    print(f'Generalization error of 0-1 loss: {np.abs(100 * (1 - (correct_test / total_test) - (1 - (correct / total))))}')
+    print(f'Generalization error of CE loss: {np.abs(
+        running_test_loss / len(testloader) - running_loss / len(trainloader0))}')
+    print(f'Generalization error of 0-1 loss: {
+          np.abs(100 * (1 - (correct_test / total_test) - (1 - (correct / total))))}')
 
 print(f'Num blocks: {num_blocks}')
 print(f'Schedule: {schedule}')
@@ -578,15 +594,19 @@ ax1.legend()
 
 fig2, ax2 = plt.subplots()
 
-ax2.hist(remove_inf_values(logits_test).cpu(), bins=50, density=True, label='Test Logits')
-ax2.hist(remove_inf_values(logits_train).cpu(), bins=50, density=True, label='Train Logits')
+ax2.hist(remove_inf_values(logits_test).cpu(),
+         bins=50, density=True, label='Test Logits')
+ax2.hist(remove_inf_values(logits_train).cpu(),
+         bins=50, density=True, label='Train Logits')
 ax2.set_title('Logits')
 ax2.legend()
 
 fig3, ax3 = plt.subplots()
 
-ax3.hist(remove_inf_values(losses_test).cpu(), bins=50, density=True, label='Test Losses')
-ax3.hist(remove_inf_values(losses_train).cpu(), bins=50, density=True, label='Train Losses')
+ax3.hist(remove_inf_values(losses_test).cpu(),
+         bins=50, density=True, label='Test Losses')
+ax3.hist(remove_inf_values(losses_train).cpu(),
+         bins=50, density=True, label='Train Losses')
 ax3.set_title('Losses')
 ax3.legend()
 
@@ -594,3 +614,4 @@ plt.grid()
 
 plt.tight_layout()
 plt.show()
+
