@@ -321,23 +321,22 @@ if __name__ == '__main__':
 
     num_epochs = 100
     num_blocks = [3, 4, 6, 3]
-    weight_decay = 0.0005
+    weight_decay = 0.0001
     lr_step = 0.1
     dropout_rate = 0.3
-    schedule = [50, 75]
+    schedule = [100, 150]
     lr = 0.1
     # Create an instance of the CNN model
     model = ResNet(ResidualBlock, num_blocks=num_blocks,
                    dropout_rate=dropout_rate).cuda()
 
     # Define the loss function and optimizer
-    criterion1 = CrossEntropyLossMask0().cuda()
-    criterion2 = CrossEntropyConfMask0().cuda()
-    criterion = CrossEntropyConfMask().cuda()
-    criterion0 = CrossEntropyLossMask().cuda()
-    # optimizer = optim.SGD(model.parameters(), lr=0.1, momentum=.9, nesterov=True, weight_decay=5e-4)
+    criterion2 = CrossEntropyLossMask0().cuda()
+    criterion1 = CrossEntropyConfMask0().cuda()
+    criterion0 = CrossEntropyConfMask().cuda()
+    criterion = CrossEntropyLossMask().cuda()
     optimizer = optim.SGD(model.parameters(), lr=lr,
-                          weight_decay=weight_decay, momentum=0.9)
+                          weight_decay=weight_decay, momentum=0.9, nesterov=True)
     scheduler = optim.lr_scheduler.MultiStepLR(
         optimizer, schedule, gamma=lr_step)
     a = torch.tensor(0.1)
@@ -355,7 +354,7 @@ if __name__ == '__main__':
     test_accs = torch.zeros((num_epochs, 2))
     t0 = time.time()
     torch.backends.cudnn.benchmark = True
-    clip_threshold = 2
+    clip_threshold = 0.5
     progress_bar = tqdm(range(num_epochs), desc="Training", unit="epoch")
 
     for epoch in progress_bar:
@@ -366,10 +365,10 @@ if __name__ == '__main__':
         running_conf = 0.0
         running_test_loss = 0.0
         running_test_conf = 0.0
-        correct = 0
-        correct_test = 0
-        total = 0
-        total_test = 0
+        correct = 0.0
+        correct_test = 0.0
+        total = 0.0
+        total_test = 0.0
 
         for data in trainloader:
 
@@ -383,8 +382,8 @@ if __name__ == '__main__':
                 loss = criterion(outputs, labels)
 
             scaler.scale(loss).backward()
-            scaler.unscale_(optimizer)
-            nn.utils.clip_grad_norm_(model.parameters(), clip_threshold)
+            # scaler.unscale_(optimizer)
+            # nn.utils.clip_grad_norm_(model.parameters(), clip_threshold)
             scaler.step(optimizer)
             scaler.update()
 
@@ -436,14 +435,13 @@ if __name__ == '__main__':
 
         if epoch % 10 == 0 and epoch > 0:
 
+            t1 = time.time()
             print(
                 f'Epoch [{epoch}/{num_epochs}], Train Accuracy: {100 * correct / total:.5f}, Test Accuracy: {100 * correct_test / total_test:.5f}')
             print(
                 f'Epoch [{epoch}/{num_epochs}], Train Loss: {running_loss / len(trainloader0):.5f}, Train Confidence: {running_conf / len(trainloader0):.5f}')
-            t1 = time.time()
             print(
                 f'Epoch [{epoch}/{num_epochs}], Test Loss: {running_test_loss / len(testloader):.5f}, Test Confidence: {running_test_conf / len(testloader):.5f}')
-            t1 = time.time()
             print(f'Time for 10 epochs: {t1 - t0}')
             t0 = time.time()
 
@@ -465,8 +463,8 @@ if __name__ == '__main__':
     print('Training finished')
 
     # Evaluate the model on the test and train sets
-    correct = 0
-    total = 0
+    correct = 0.0
+    total = 0.0
     logits_train = torch.empty(0).cuda()
     logits_test = torch.empty(0).cuda()
     losses_train = torch.empty(0).cuda()
@@ -508,8 +506,8 @@ if __name__ == '__main__':
     print(f'Confidence on the train set: {
           running_conf / len(trainloader0):.2f}')
 
-    correct_test = 0
-    total_test = 0
+    correct_test = 0.0
+    total_test = 0.0
 
     with torch.no_grad():
 
@@ -555,21 +553,16 @@ print(f'Initial learning rate: {lr}')
 print(f'Learning rate step: {lr_step}')
 
 
-fig, axs = plt.subplots(2)
+fig, axs = plt.subplots()
 
-axs[0].plot(confs[:, 0], confs[:, 1], 'b-', label='Confidences')
-axs[0].plot(losses[:, 0], losses[:, 1], 'r-', label='Losses')
-axs[0].set_xlabel('Epoch')
-axs[0].set_ylabel('Value')
-axs[0].set_title('Empirical Confidences and Losses')
-axs[0].legend()
-
-axs[1].plot(test_confs[:, 0], test_confs[:, 1], 'b-', label='Confidences')
-axs[1].plot(test_losses[:, 0], test_losses[:, 1], 'r-', label='Losses')
-axs[1].set_xlabel('Epoch')
-axs[1].set_ylabel('Value')
-axs[1].set_title('Test Confidences and Losses')
-axs[1].legend()
+axs.plot(confs[:, 0], confs[:, 1], 'y-', label='Tr. Confidences')
+axs.plot(losses[:, 0], losses[:, 1], 'r-', label='Tr. Losses')
+axs.plot(test_confs[:, 0], test_confs[:, 1], 'g-', label='Te.Confidences')
+axs.plot(test_losses[:, 0], test_losses[:, 1], 'b-', label='Te. Losses')
+axs.set_xlabel('Epoch')
+axs.set_ylabel('Value')
+axs.set_title('Confidences and Losses')
+axs.legend()
 
 fig, ax = plt.subplots()
 
@@ -614,4 +607,3 @@ plt.grid()
 
 plt.tight_layout()
 plt.show()
-
