@@ -310,7 +310,7 @@ if __name__ == '__main__':
     trainset = torchvision.datasets.CIFAR10(
         root='./data', train=True, transform=transform_train)
     trainloader = torch.utils.data.DataLoader(
-        trainset, batch_size=64, shuffle=False, num_workers=2, persistent_workers=True, prefetch_factor=4, pin_memory=True)
+        trainset, batch_size=64, shuffle=True, num_workers=2, persistent_workers=True, prefetch_factor=4, pin_memory=True)
     trainloader0 = torch.utils.data.DataLoader(
         trainset, batch_size=2000, shuffle=False, num_workers=2, persistent_workers=True, prefetch_factor=2, pin_memory=True)
 
@@ -319,8 +319,8 @@ if __name__ == '__main__':
     testloader = torch.utils.data.DataLoader(
         testset, batch_size=2000, shuffle=False, num_workers=2, persistent_workers=True, prefetch_factor=2, pin_memory=True)
 
-    num_epochs = 100
-    num_blocks = [3, 4, 6, 3]
+    num_epochs = 200
+    num_blocks = [2, 2, 2, 2]
     weight_decay = 0.0001
     lr_step = 0.1
     dropout_rate = 0.3
@@ -340,8 +340,6 @@ if __name__ == '__main__':
     scheduler = optim.lr_scheduler.MultiStepLR(
         optimizer, schedule, gamma=lr_step)
     a = torch.tensor(0.1)
-    torch.manual_seed(0)
-    np.random.seed(0)
 
     confs = torch.zeros((num_epochs, 2))
     losses = torch.zeros((num_epochs, 2))
@@ -439,16 +437,16 @@ if __name__ == '__main__':
             print(
                 f'Epoch [{epoch}/{num_epochs}], Train Accuracy: {100 * correct / total:.5f}, Test Accuracy: {100 * correct_test / total_test:.5f}')
             print(
-                f'Epoch [{epoch}/{num_epochs}], Train Loss: {running_loss / len(trainloader0):.5f}, Train Confidence: {running_conf / len(trainloader0):.5f}')
+                f'Epoch [{epoch}/{num_epochs}], Train Loss: {running_loss / len(trainloader0):.5f}, Train Confidence: {-running_conf / len(trainloader0):.5f}')
             print(
-                f'Epoch [{epoch}/{num_epochs}], Test Loss: {running_test_loss / len(testloader):.5f}, Test Confidence: {running_test_conf / len(testloader):.5f}')
+                f'Epoch [{epoch}/{num_epochs}], Test Loss: {running_test_loss / len(testloader):.5f}, Test Confidence: {-running_test_conf / len(testloader):.5f}')
             print(f'Time for 10 epochs: {t1 - t0}')
             t0 = time.time()
 
-        confs[epoch] = torch.tensor([epoch, running_conf / len(trainloader0)])
+        confs[epoch] = torch.tensor([epoch, -running_conf / len(trainloader0)])
         losses[epoch] = torch.tensor([epoch, running_loss / len(trainloader0)])
         test_confs[epoch] = torch.tensor(
-            [epoch, running_test_conf / len(testloader)])
+            [epoch, -running_test_conf / len(testloader)])
         test_losses[epoch] = torch.tensor(
             [epoch, running_test_loss / len(testloader)])
         gen_confs[epoch] = torch.tensor([epoch, np.abs(
@@ -501,10 +499,10 @@ if __name__ == '__main__':
             running_conf += conf.item()
             running_loss += loss.item()
 
-    print(f'Accuracy on the train set: {100 * correct / total:.2f}%')
-    print(f'Loss on the train set: {running_loss / len(trainloader0):.2f}')
+    print(f'Accuracy on the train set: {100 * correct / total:.5f}%')
+    print(f'Loss on the train set: {running_loss / len(trainloader0):.5f}')
     print(f'Confidence on the train set: {
-          running_conf / len(trainloader0):.2f}')
+          -running_conf / len(trainloader0):.5f}')
 
     correct_test = 0.0
     total_test = 0.0
@@ -534,10 +532,10 @@ if __name__ == '__main__':
             running_test_conf += conf.item()
             running_test_loss += loss.item()
 
-    print(f'Accuracy on the test set: {100 * correct_test / total_test:.2f}%')
-    print(f'Loss on the test set: {running_test_loss / len(testloader):.2f}')
+    print(f'Accuracy on the test set: {100 * correct_test / total_test:.5f}%')
+    print(f'Loss on the test set: {running_test_loss / len(testloader):.5f}')
     print(f'Confidence on the test set: {
-          running_test_conf / len(testloader):.2f}')
+          -running_test_conf / len(testloader):.5f}')
 
     print(f'Generalization error of CE loss: {np.abs(
         running_test_loss / len(testloader) - running_loss / len(trainloader0))}')
@@ -564,6 +562,8 @@ axs.set_ylabel('Value')
 axs.set_title('Confidences and Losses')
 axs.legend()
 
+plt.grid()
+
 fig, ax = plt.subplots()
 
 ax.plot(gen_confs[:, 0], gen_confs[:, 1], 'b-', label='Gen. Confidences')
@@ -585,6 +585,8 @@ ax1.set_ylabel('Value')
 ax1.set_title('Accuracy')
 ax1.legend()
 
+plt.grid()
+
 fig2, ax2 = plt.subplots()
 
 ax2.hist(remove_inf_values(logits_test).cpu(),
@@ -593,6 +595,8 @@ ax2.hist(remove_inf_values(logits_train).cpu(),
          bins=50, density=True, label='Train Logits')
 ax2.set_title('Logits')
 ax2.legend()
+
+plt.grid()
 
 fig3, ax3 = plt.subplots()
 
