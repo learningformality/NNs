@@ -13,24 +13,19 @@ import numpy as np
 if __name__ == '__main__':
 
     scaler = GradScaler()
-    mean = (0.4914, 0.4822, 0.4465)
-    std = (0.2023, 0.1994, 0.2010)
 
     transform_train = transforms.Compose([
         transforms.RandomCrop(32, padding=4),
         transforms.RandomHorizontalFlip(),
         transforms.ToTensor(),
-        transforms.Normalize(mean, std)
+        transforms.Normalize((0.4914, 0.4822, 0.4465),
+                             (0.2023, 0.1994, 0.2010)),
     ])
 
     transform_test = transforms.Compose([
         transforms.ToTensor(),
-        transforms.Normalize(mean, std)
-    ])
-
-    transform = transforms.Compose([
-        transforms.ToTensor(),
-        transforms.Normalize((0.5, 0.5, 0.5), (0.5, 0.5, 0.5))
+        transforms.Normalize((0.4914, 0.4822, 0.4465),
+                             (0.2023, 0.1994, 0.2010)),
     ])
 
     def remove_inf_values(tensor):
@@ -52,13 +47,11 @@ if __name__ == '__main__':
 
         def forward(self, input, target):
 
-            epsilon = 1e-7
-
             # Apply softmax to the input
             softmax_output = nn.functional.softmax(input, dim=1)
 
             # Apply logit function to the softmax output
-            logits = torch.log(softmax_output / (1 - softmax_output + epsilon))
+            logits = torch.special.logit(softmax_output, eps=1e-7)
 
             # Compute cross-entropy loss
             loss = nn.functional.nll_loss(
@@ -75,13 +68,11 @@ if __name__ == '__main__':
 
         def forward(self, input, target):
 
-            epsilon = 1e-7
-
             # Apply softmax to the input
             softmax_output = nn.functional.softmax(input, dim=1)
 
             # Apply logit function to the softmax output
-            logits = torch.log(softmax_output / (1 - softmax_output + epsilon))
+            logits = torch.special.logit(softmax_output, eps=1e-7)
 
             # Create a mask to ignore the terms that do not correspond to the target class
             mask = torch.zeros_like(logits)
@@ -109,13 +100,11 @@ if __name__ == '__main__':
 
         def forward(self, input, target):
 
-            epsilon = 1e-7
-
             # Apply softmax to the input
             softmax_output = nn.functional.softmax(input, dim=1)
 
             # Apply logit function to the softmax output
-            logits = torch.log(softmax_output / (1 - softmax_output + epsilon))
+            logits = torch.special.logit(softmax_output, eps=1e-7)
 
             # Create a mask to ignore the terms that do not correspond to the target class
             mask = torch.zeros_like(logits)
@@ -170,7 +159,6 @@ if __name__ == '__main__':
             loss = -torch.sum(log_probs * mask, dim=1)
 
             return loss
-
     '''
     # Define the CNN architecture
     class SimpleCNN(nn.Module):
