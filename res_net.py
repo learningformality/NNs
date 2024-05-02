@@ -285,10 +285,26 @@ if __name__ == '__main__':
     def ResNet152():
         return ResNet(ResidualBlock, [3, 8, 36, 3])
 
+    batch_size = 512
+    randomized = True
+    num_classes = 10
+    num_epochs = 200
+    num_blocks = [2, 2, 2, 2]
+    weight_decay = 0.0005
+    lr_step = 0.1
+    dropout_rate = 0.3
+    schedule = [60, 120, 180]
+    lr = 0.1
+
+    if randomized == False:
+
+        torch.manual_seed(0)
+        np.random.seed(0)
+
     trainset = torchvision.datasets.CIFAR10(
         root='./data', train=True, transform=transform_train)
     trainloader = torch.utils.data.DataLoader(
-        trainset, batch_size=64, shuffle=True, num_workers=2, persistent_workers=True, prefetch_factor=4, pin_memory=True)
+        trainset, batch_size=batch_size, shuffle=True, num_workers=4, persistent_workers=True, prefetch_factor=4, pin_memory=True)
     trainloader0 = torch.utils.data.DataLoader(
         trainset, batch_size=2000, shuffle=False, num_workers=2, persistent_workers=True, prefetch_factor=2, pin_memory=True)
 
@@ -297,13 +313,6 @@ if __name__ == '__main__':
     testloader = torch.utils.data.DataLoader(
         testset, batch_size=2000, shuffle=False, num_workers=2, persistent_workers=True, prefetch_factor=2, pin_memory=True)
 
-    num_epochs = 200
-    num_blocks = [2, 2, 2, 2]
-    weight_decay = 0.0001
-    lr_step = 0.1
-    dropout_rate = 0.3
-    schedule = [100, 150, 175]
-    lr = 0.1
     # Create an instance of the CNN model
     model = ResNet(ResidualBlock, num_blocks=num_blocks,
                    dropout_rate=dropout_rate).cuda()
@@ -527,7 +536,8 @@ print(f'Weight decay: {weight_decay}')
 print(f'Dropout rate: {dropout_rate}')
 print(f'Initial learning rate: {lr}')
 print(f'Learning rate step: {lr_step}')
-
+print(f'Random: {randomized}')
+print(f'Batch size: {batch_size}')
 
 fig, axs = plt.subplots()
 
