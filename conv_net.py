@@ -68,17 +68,23 @@ if __name__ == '__main__':
 
         def forward(self, input, target):
 
-            # Apply softmax to the input
             softmax_output = nn.functional.softmax(input, dim=1)
 
-            # Apply logit function to the softmax output
-            logits = torch.special.logit(softmax_output, eps=1e-7)
+            # Compute the log of the softmax output and clamp the values
+            log_softmax_output = torch.log(
+                softmax_output.clamp(max=1 - 1e-7, min=1e-7))
 
-            # Create a mask to ignore the terms that do not correspond to the target class
-            mask = torch.zeros_like(logits)
+            # Create a mask to select the logit corresponding to the target class
+            mask = torch.zeros_like(log_softmax_output)
             mask.scatter_(1, target.unsqueeze(1), 1)
 
-            loss = -torch.sum(logits * mask, dim=1)
+            # Compute the log of the sum of the softmax values for non-target classes
+            log_sum_exp = torch.logsumexp(
+                log_softmax_output * (1 - mask), dim=1)
+
+            # Compute the loss
+            loss = -torch.sum(mask * (log_softmax_output -
+                              log_sum_exp.unsqueeze(1)), dim=1)
 
             if self.reduction == 'mean':
 
@@ -100,17 +106,23 @@ if __name__ == '__main__':
 
         def forward(self, input, target):
 
-            # Apply softmax to the input
             softmax_output = nn.functional.softmax(input, dim=1)
 
-            # Apply logit function to the softmax output
-            logits = torch.special.logit(softmax_output, eps=1e-7)
+            # Compute the log of the softmax output and clamp the values
+            log_softmax_output = torch.log(
+                softmax_output.clamp(max=1 - 1e-7, min=1e-7))
 
-            # Create a mask to ignore the terms that do not correspond to the target class
-            mask = torch.zeros_like(logits)
+            # Create a mask to select the logit corresponding to the target class
+            mask = torch.zeros_like(log_softmax_output)
             mask.scatter_(1, target.unsqueeze(1), 1)
 
-            loss = -torch.sum(logits * mask, dim=1)
+            # Compute the log of the sum of the softmax values for non-target classes
+            log_sum_exp = torch.logsumexp(
+                log_softmax_output * (1 - mask), dim=1)
+
+            # Compute the loss
+            loss = -torch.sum(mask * (log_softmax_output -
+                              log_sum_exp.unsqueeze(1)), dim=1)
 
             return loss
 
@@ -299,23 +311,25 @@ if __name__ == '__main__':
     batch_size = 512
     randomized = True
     num_classes = 10
-    num_epochs = 200
-    widen_factor = 10
+    num_epochs = 2
+    widen_factor = 5
     weight_decay = 0.0005
     lr_step = 0.1
     dropout_rate = 0.3
     schedule = [60, 120, 180]
     lr = 0.1
+    shuffle = True
 
     if randomized == False:
 
         torch.manual_seed(0)
         np.random.seed(0)
+        shuffle = False
 
     trainset = torchvision.datasets.CIFAR10(
         root='./data', train=True, transform=transform_train)
     trainloader = torch.utils.data.DataLoader(
-        trainset, batch_size=batch_size, shuffle=True, num_workers=4, persistent_workers=True, prefetch_factor=4, pin_memory=True)
+        trainset, batch_size=batch_size, shuffle=shuffle, num_workers=4, persistent_workers=True, prefetch_factor=4, pin_memory=True)
     trainloader0 = torch.utils.data.DataLoader(
         trainset, batch_size=2000, shuffle=False, num_workers=2, persistent_workers=True, prefetch_factor=2, pin_memory=True)
 
@@ -435,9 +449,9 @@ if __name__ == '__main__':
             print(
                 f'Epoch [{epoch}/{num_epochs}], Train Accuracy: {100 * correct / total:.5f}, Test Accuracy: {100 * correct_test / total_test:.5f}')
             print(
-                f'Epoch [{epoch}/{num_epochs}], Train Loss: {running_loss / len(trainloader0):.5f}, Train Confidence: {-running_conf / len(trainloader0):.5f}')
+                f'Epoch [{epoch}/{num_epochs}], Train Loss: {running_loss / len(trainloader0):.5f}, Train Confidence: {running_conf / len(trainloader0):.5f}')
             print(
-                f'Epoch [{epoch}/{num_epochs}], Test Loss: {running_test_loss / len(testloader):.5f}, Test Confidence: {-running_test_conf / len(testloader):.5f}')
+                f'Epoch [{epoch}/{num_epochs}], Test Loss: {running_test_loss / len(testloader):.5f}, Test Confidence: {running_test_conf / len(testloader):.5f}')
             print(f'Time for 10 epochs: {t1 - t0}')
             t0 = time.time()
 
@@ -500,7 +514,7 @@ if __name__ == '__main__':
     print(f'Accuracy on the train set: {100 * correct / total:.5f}%')
     print(f'Loss on the train set: {running_loss / len(trainloader0):.5f}')
     print(f'Confidence on the train set: {
-          -running_conf / len(trainloader0):.5f}')
+          running_conf / len(trainloader0):.5f}')
 
     correct_test = 0.0
     total_test = 0.0
@@ -533,7 +547,7 @@ if __name__ == '__main__':
     print(f'Accuracy on the test set: {100 * correct_test / total_test:.5f}%')
     print(f'Loss on the test set: {running_test_loss / len(testloader):.5f}')
     print(f'Confidence on the test set: {
-          -running_test_conf / len(testloader):.5f}')
+          running_test_conf / len(testloader):.5f}')
 
     print(f'Generalization error of CE loss: {np.abs(
         running_test_loss / len(testloader) - running_loss / len(trainloader0))}')
@@ -555,7 +569,7 @@ fig, axs = plt.subplots()
 
 axs.plot(confs[:, 0], confs[:, 1], 'y-', label='Tr. Confidences')
 axs.plot(losses[:, 0], losses[:, 1], 'r-', label='Tr. Losses')
-axs.plot(test_confs[:, 0], test_confs[:, 1], 'g-', label='Te.Confidences')
+axs.plot(test_confs[:, 0], test_confs[:, 1], 'g-', label='Te. Confidences')
 axs.plot(test_losses[:, 0], test_losses[:, 1], 'b-', label='Te. Losses')
 axs.set_xlabel('Epoch')
 axs.set_ylabel('Value')
