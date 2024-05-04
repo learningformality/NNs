@@ -68,17 +68,17 @@ if __name__ == '__main__':
 
         def forward(self, input, target):
 
-            # Apply softmax to the input
-            softmax_output = nn.functional.softmax(input, dim=1)
-
-            # Apply logit function to the softmax output
-            logits = torch.special.logit(softmax_output, eps=1e-7)
-
-            # Create a mask to ignore the terms that do not correspond to the target class
-            mask = torch.zeros_like(logits)
+            # Create a mask to select the logit corresponding to the target class
+            mask = torch.zeros_like(input)
             mask.scatter_(1, target.unsqueeze(1), 1)
 
-            loss = -torch.sum(logits * mask, dim=1)
+            # Compute the log of the sum of the exps
+            log_sum_exp = torch.logsumexp(
+                input * (1 - mask), dim=1)
+
+            # Compute the conf
+            loss = torch.sum(mask * (input -
+                                     log_sum_exp.unsqueeze(1)), dim=1)
 
             if self.reduction == 'mean':
 
@@ -100,17 +100,17 @@ if __name__ == '__main__':
 
         def forward(self, input, target):
 
-            # Apply softmax to the input
-            softmax_output = nn.functional.softmax(input, dim=1)
-
-            # Apply logit function to the softmax output
-            logits = torch.special.logit(softmax_output, eps=1e-7)
-
-            # Create a mask to ignore the terms that do not correspond to the target class
-            mask = torch.zeros_like(logits)
+            # Create a mask to select the logit corresponding to the target class
+            mask = torch.zeros_like(input)
             mask.scatter_(1, target.unsqueeze(1), 1)
 
-            loss = -torch.sum(logits * mask, dim=1)
+            # Compute the log of the sum of the exps
+            log_sum_exp = torch.logsumexp(
+                input * (1 - mask), dim=1)
+
+            # Compute the conf
+            loss = torch.sum(mask * (input -
+                                     log_sum_exp.unsqueeze(1)), dim=1)
 
             return loss
 
@@ -288,7 +288,7 @@ if __name__ == '__main__':
     batch_size = 512
     randomized = True
     num_classes = 10
-    num_epochs = 200
+    num_epochs = 2
     num_blocks = [2, 2, 2, 2]
     weight_decay = 0.0005
     lr_step = 0.1
@@ -324,6 +324,8 @@ if __name__ == '__main__':
     criterion1 = CrossEntropyConfMask0().cuda()
     criterion0 = CrossEntropyConfMask().cuda()
     criterion = CrossEntropyLossMask().cuda()
+    criterion0_eval = CrossEntropyConfMask(reduction='sum').cuda()
+    criterion_eval = CrossEntropyLossMask(reduction='sum').cuda()
     optimizer = optim.SGD(model.parameters(), lr=lr,
                           weight_decay=weight_decay, momentum=0.9, nesterov=True)
     scheduler = optim.lr_scheduler.MultiStepLR(
@@ -346,7 +348,7 @@ if __name__ == '__main__':
 
     for epoch in progress_bar:
 
-        model.train()
+        # model.train()
 
         running_loss = 0.0
         running_conf = 0.0
@@ -376,7 +378,7 @@ if __name__ == '__main__':
 
         scheduler.step()
 
-        model.eval()
+        # model.eval()
 
         with torch.no_grad():
 
@@ -389,8 +391,8 @@ if __name__ == '__main__':
 
                     outputs = model(images)
 
-                    loss = criterion(outputs, labels)
-                    conf = criterion0(outputs, labels)
+                    loss = criterion_eval(outputs, labels)
+                    conf = criterion0_eval(outputs, labels)
 
                 _, predicted = torch.max(outputs.data, 1)
                 total += labels.size(0)
@@ -410,8 +412,8 @@ if __name__ == '__main__':
 
                     outputs = model(images)
 
-                    loss = criterion(outputs, labels)
-                    conf = criterion0(outputs, labels)
+                    loss = criterion_eval(outputs, labels)
+                    conf = criterion0_eval(outputs, labels)
 
                 _, predicted = torch.max(outputs.data, 1)
                 total_test += labels.size(0)
@@ -426,22 +428,22 @@ if __name__ == '__main__':
             print(
                 f'Epoch [{epoch}/{num_epochs}], Train Accuracy: {100 * correct / total:.5f}, Test Accuracy: {100 * correct_test / total_test:.5f}')
             print(
-                f'Epoch [{epoch}/{num_epochs}], Train Loss: {running_loss / len(trainloader0):.5f}, Train Confidence: {running_conf / len(trainloader0):.5f}')
+                f'Epoch [{epoch}/{num_epochs}], Train Loss: {running_loss / total:.5f}, Train Confidence: {running_conf / total:.5f}')
             print(
-                f'Epoch [{epoch}/{num_epochs}], Test Loss: {running_test_loss / len(testloader):.5f}, Test Confidence: {running_test_conf / len(testloader):.5f}')
+                f'Epoch [{epoch}/{num_epochs}], Test Loss: {running_test_loss / total_test:.5f}, Test Confidence: {running_test_conf / total_test:.5f}')
             print(f'Time for 10 epochs: {t1 - t0}')
             t0 = time.time()
 
-        confs[epoch] = torch.tensor([epoch, -running_conf / len(trainloader0)])
-        losses[epoch] = torch.tensor([epoch, running_loss / len(trainloader0)])
+        confs[epoch] = torch.tensor([epoch, running_conf / total])
+        losses[epoch] = torch.tensor([epoch, running_loss / total])
         test_confs[epoch] = torch.tensor(
-            [epoch, -running_test_conf / len(testloader)])
+            [epoch, running_test_conf / total_test])
         test_losses[epoch] = torch.tensor(
-            [epoch, running_test_loss / len(testloader)])
+            [epoch, running_test_loss / total_test])
         gen_confs[epoch] = torch.tensor([epoch, np.abs(
-            running_test_conf / len(testloader) - running_conf / len(trainloader0))])
+            running_test_conf / total_test - running_conf / total)])
         gen_losses[epoch] = torch.tensor([epoch, np.abs(
-            running_test_loss / len(testloader) - running_loss / len(trainloader0))])
+            running_test_loss / total_test - running_loss / total)])
         gen_acc[epoch] = torch.tensor([epoch, np.abs(
             100 * (1 - (correct_test / total_test) - (1 - (correct / total))))])
         train_accs[epoch] = torch.tensor([epoch, correct / total])
@@ -461,7 +463,7 @@ if __name__ == '__main__':
     running_test_loss = 0.0
     running_test_conf = 0.0
 
-    model.eval()
+    # model.eval()
 
     with torch.no_grad():
 
@@ -474,8 +476,8 @@ if __name__ == '__main__':
 
                 outputs = model(images)
 
-                loss = criterion(outputs, labels)
-                conf = criterion0(outputs, labels)
+                loss = criterion_eval(outputs, labels)
+                conf = criterion0_eval(outputs, labels)
 
             _, predicted = torch.max(outputs.data, 1)
             total += labels.size(0)
@@ -489,9 +491,9 @@ if __name__ == '__main__':
             running_loss += loss.item()
 
     print(f'Accuracy on the train set: {100 * correct / total:.5f}%')
-    print(f'Loss on the train set: {running_loss / len(trainloader0):.5f}')
-    print(f'Confidence on the train set: {
-          running_conf / len(trainloader0):.5f}')
+    print(f'Loss on the train set: {running_loss / total:.5f}')
+    print(
+        f'Confidence on the train set: {running_conf / total: .5f}')
 
     correct_test = 0.0
     total_test = 0.0
@@ -507,8 +509,8 @@ if __name__ == '__main__':
 
                 outputs = model(images)
 
-                loss = criterion(outputs, labels)
-                conf = criterion0(outputs, labels)
+                loss = criterion_eval(outputs, labels)
+                conf = criterion0_eval(outputs, labels)
 
             _, predicted = torch.max(outputs.data, 1)
             total_test += labels.size(0)
@@ -522,14 +524,14 @@ if __name__ == '__main__':
             running_test_loss += loss.item()
 
     print(f'Accuracy on the test set: {100 * correct_test / total_test:.5f}%')
-    print(f'Loss on the test set: {running_test_loss / len(testloader):.5f}')
-    print(f'Confidence on the test set: {
-          running_test_conf / len(testloader):.5f}')
+    print(f'Loss on the test set: {running_test_loss / total_test:.5f}')
+    print(
+        f'Confidence on the test set: {running_test_conf / total_test: .5f}')
 
-    print(f'Generalization error of CE loss: {np.abs(
-        running_test_loss / len(testloader) - running_loss / len(trainloader0))}')
-    print(f'Generalization error of 0-1 loss: {
-          np.abs(100 * (1 - (correct_test / total_test) - (1 - (correct / total))))}')
+    print(
+        f'Generalization error of CE loss: {np.abs(running_test_loss / total_test - running_loss / total_test)}')
+    print(
+        f'Generalization error of 0-1 loss: {np.abs(100 * (1 - (correct_test / total_test) - (1 - (correct / total))))}')
 
 print(f'Num blocks: {num_blocks}')
 print(f'Schedule: {schedule}')
@@ -541,11 +543,12 @@ print(f'Learning rate step: {lr_step}')
 print(f'Random: {randomized}')
 print(f'Batch size: {batch_size}')
 
+
 fig, axs = plt.subplots()
 
 axs.plot(confs[:, 0], confs[:, 1], 'y-', label='Tr. Confidences')
 axs.plot(losses[:, 0], losses[:, 1], 'r-', label='Tr. Losses')
-axs.plot(test_confs[:, 0], test_confs[:, 1], 'g-', label='Te.Confidences')
+axs.plot(test_confs[:, 0], test_confs[:, 1], 'g-', label='Te. Confidences')
 axs.plot(test_losses[:, 0], test_losses[:, 1], 'b-', label='Te. Losses')
 axs.set_xlabel('Epoch')
 axs.set_ylabel('Value')
