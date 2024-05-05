@@ -296,15 +296,15 @@ if __name__ == '__main__':
 
             return x
 
-    batch_size = 128
+    batch_size = 256
     randomized = True
     num_classes = 10
-    num_epochs = 100
-    widen_factor = 1
+    num_epochs = 200
+    widen_factor = 10
     weight_decay = 0.0005
     lr_step = 0.1
     dropout_rate = 0.3
-    schedule = [50, 75]
+    schedule = [60, 120, 180]
     lr = 0.1
     shuffle = True
 

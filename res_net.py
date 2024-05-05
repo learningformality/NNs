@@ -228,8 +228,8 @@ if __name__ == '__main__':
 
         def forward(self, x):
             out = F.relu(self.bn1(self.conv1(x)))
-            out = self.bn2(self.conv2(out))
             out = self.dropout(out)
+            out = self.bn2(self.conv2(out))
             out += self.shortcut(x)
             out = F.relu(out)
             return out
@@ -238,7 +238,7 @@ if __name__ == '__main__':
         def __init__(self, block, num_blocks, num_classes=10, dropout_rate=0.0):
             super(ResNet, self).__init__()
             self.in_channels = 64
-            self.dropout_rate = dropout_rate
+            self.dropout = nn.Dropout(dropout_rate)
 
             self.conv1 = nn.Conv2d(3, 64, kernel_size=3,
                                    stride=1, padding=1, bias=False)
@@ -255,12 +255,13 @@ if __name__ == '__main__':
             layers = []
             for stride in strides:
                 layers.append(
-                    block(self.in_channels, out_channels, stride, self.dropout_rate))
+                    block(self.in_channels, out_channels, stride, dropout_rate))
                 self.in_channels = out_channels
             return nn.Sequential(*layers)
 
         def forward(self, x):
             out = F.relu(self.bn1(self.conv1(x)))
+            out = self.dropout(out)
             out = self.layer1(out)
             out = self.layer2(out)
             out = self.layer3(out)
@@ -285,11 +286,11 @@ if __name__ == '__main__':
     def ResNet152():
         return ResNet(ResidualBlock, [3, 8, 36, 3])
 
-    batch_size = 512
+    batch_size = 256
     randomized = True
     num_classes = 10
-    num_epochs = 2
-    num_blocks = [2, 2, 2, 2]
+    num_epochs = 200
+    num_blocks = [3, 4, 6, 3]
     weight_decay = 0.0005
     lr_step = 0.1
     dropout_rate = 0.3
