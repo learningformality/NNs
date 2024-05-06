@@ -10,6 +10,7 @@ from torch.cuda.amp import autocast, GradScaler
 from tqdm import tqdm
 import numpy as np
 
+
 if __name__ == '__main__':
 
     scaler = GradScaler()
@@ -286,15 +287,15 @@ if __name__ == '__main__':
     def ResNet152():
         return ResNet(ResidualBlock, [3, 8, 36, 3])
 
-    batch_size = 256
+    batch_size = 128
     randomized = True
     num_classes = 10
-    num_epochs = 200
-    num_blocks = [3, 4, 6, 3]
+    num_epochs = 100
+    num_blocks = [3, 3, 3, 3]
     weight_decay = 0.0005
     lr_step = 0.1
-    dropout_rate = 0.3
-    schedule = [60, 120, 180]
+    dropout_rate = 0.5
+    schedule = [30, 60, 90]
     lr = 0.1
     shuffle = True
 

@@ -14,18 +14,12 @@ if __name__ == '__main__':
 
     scaler = GradScaler()
 
-    transform_train = transforms.Compose([
-        transforms.RandomCrop(32, padding=4),
-        transforms.RandomHorizontalFlip(),
+    transform = transforms.Compose([
+        transforms.RandomAffine(
+            degrees=10, translate=(0.1, 0.1), scale=(0.9, 1.1)),
+        transforms.ColorJitter(brightness=0.2, contrast=0.2),
         transforms.ToTensor(),
-        transforms.Normalize((0.4914, 0.4822, 0.4465),
-                             (0.2023, 0.1994, 0.2010)),
-    ])
-
-    transform_test = transforms.Compose([
-        transforms.ToTensor(),
-        transforms.Normalize((0.4914, 0.4822, 0.4465),
-                             (0.2023, 0.1994, 0.2010)),
+        transforms.Normalize((0.5,), (0.5,))
     ])
 
     def remove_inf_values(tensor):
@@ -36,28 +30,6 @@ if __name__ == '__main__':
         tensor = tensor[mask]
 
         return tensor
-
-    class CrossEntropyConf(nn.Module):
-
-        def __init__(self, reduction='mean'):
-
-            super(CrossEntropyConf, self).__init__()
-
-            self.reduction = reduction
-
-        def forward(self, input, target):
-
-            # Apply softmax to the input
-            softmax_output = nn.functional.softmax(input, dim=1)
-
-            # Apply logit function to the softmax output
-            logits = torch.special.logit(softmax_output, eps=1e-7)
-
-            # Compute cross-entropy loss
-            loss = nn.functional.nll_loss(
-                logits, target, reduction=self.reduction)
-
-            return loss
 
     class CrossEntropyConfMask(nn.Module):
         def __init__(self, reduction='mean'):
@@ -159,155 +131,32 @@ if __name__ == '__main__':
             loss = -torch.sum(log_probs * mask, dim=1)
 
             return loss
-    '''
-    # Define the CNN architecture
-    class SimpleCNN(nn.Module):
+
+    class SimpleNet(nn.Module):
         def __init__(self):
-            super(SimpleCNN, self).__init__()
-            self.conv1 = nn.Conv2d(3, 32, kernel_size=3, stride=1, padding=1)
-            self.bn1 = nn.BatchNorm2d(32)
-            self.conv2 = nn.Conv2d(32, 64, kernel_size=3, stride=1, padding=1)
-            self.bn2 = nn.BatchNorm2d(64)
-            self.pool1 = nn.MaxPool2d(kernel_size=2, stride=2)
-
-            self.conv3 = nn.Conv2d(64, 128, kernel_size=3, stride=1, padding=1)
-            self.bn3 = nn.BatchNorm2d(128)
-            self.conv4 = nn.Conv2d(
-                128, 128, kernel_size=3, stride=1, padding=1)
-            self.bn4 = nn.BatchNorm2d(128)
-            self.pool2 = nn.MaxPool2d(kernel_size=2, stride=2)
-
-            self.conv5 = nn.Conv2d(
-                128, 256, kernel_size=3, stride=1, padding=1)
-            self.bn5 = nn.BatchNorm2d(256)
-            self.conv6 = nn.Conv2d(
-                256, 256, kernel_size=3, stride=1, padding=1)
-            self.bn6 = nn.BatchNorm2d(256)
-            self.pool3 = nn.MaxPool2d(kernel_size=2, stride=2)
-
-            self.fc1 = nn.Linear(256 * 4 * 4, 1024)
-            self.dropout = nn.Dropout(0.5)
-            self.fc2 = nn.Linear(1024, 10)
+            super(SimpleNet, self).__init__()
+            self.fc1 = nn.Linear(28 * 28, 512)
+            self.fc2 = nn.Linear(512, 256)
+            self.fc3 = nn.Linear(256, 128)
+            self.fc4 = nn.Linear(128, 10)
+            self.relu = nn.ReLU()
 
         def forward(self, x):
-            x = F.relu(self.bn1(self.conv1(x)))
-            x = F.relu(self.bn2(self.conv2(x)))
-            x = self.pool1(x)
-
-            x = F.relu(self.bn3(self.conv3(x)))
-            x = F.relu(self.bn4(self.conv4(x)))
-            x = self.pool2(x)
-
-            x = F.relu(self.bn5(self.conv5(x)))
-            x = F.relu(self.bn6(self.conv6(x)))
-            x = self.pool3(x)
-
-            x = x.view(x.size(0), -1)
-            x = F.relu(self.fc1(x))
-            x = self.dropout(x)
-            x = self.fc2(x)
-
-            return x
-    '''
-
-    class BasicBlock(nn.Module):
-
-        def __init__(self, in_channels, out_channels, stride, dropout_rate):
-
-            super(BasicBlock, self).__init__()
-
-            self.bn1 = nn.BatchNorm2d(in_channels)
-            self.relu1 = nn.ReLU(inplace=True)
-            self.conv1 = nn.Conv2d(
-                in_channels, out_channels, kernel_size=3, stride=stride, padding=1, bias=False)
-            self.bn2 = nn.BatchNorm2d(out_channels)
-            self.relu2 = nn.ReLU(inplace=True)
-            self.conv2 = nn.Conv2d(
-                out_channels, out_channels, kernel_size=3, stride=1, padding=1, bias=False)
-            self.dropout = nn.Dropout(dropout_rate)
-            self.shortcut = nn.Identity()
-
-            if stride != 1 or in_channels != out_channels:
-
-                self.shortcut = nn.Sequential(
-                    nn.Conv2d(in_channels, out_channels,
-                              kernel_size=1, stride=stride, bias=False)
-                )
-
-        def forward(self, x):
-
-            out = self.relu1(self.bn1(x))
-            out = self.conv1(out)
-            out = self.relu2(self.bn2(out))
-            out = self.dropout(out)
-            out = self.conv2(out)
-            out += self.shortcut(x)
-
-            return out
-
-    class SimpleCNN(nn.Module):
-
-        def __init__(self, num_classes=10, widen_factor=10, dropout_rate=0.3):
-
-            super(SimpleCNN, self).__init__()
-
-            self.in_channels = 16
-            self.conv1 = nn.Conv2d(3, 16, kernel_size=3,
-                                   stride=1, padding=1, bias=False)
-            self.layer1 = self._make_layer(
-                16 * widen_factor, 1, dropout_rate, 4)
-            self.layer2 = self._make_layer(
-                32 * widen_factor, 2, dropout_rate, 4)
-            self.layer3 = self._make_layer(
-                64 * widen_factor, 2, dropout_rate, 4)
-            self.bn = nn.BatchNorm2d(64 * widen_factor)
-            self.relu = nn.ReLU(inplace=True)
-            self.avgpool = nn.AdaptiveAvgPool2d((1, 1))
-            self.fc = nn.Linear(64 * widen_factor, num_classes)
-
-        def _make_layer(self, out_channels, stride, dropout_rate, num_blocks):
-
-            layers = []
-
-            for i in range(num_blocks):
-
-                if i == 0:
-
-                    layers.append(BasicBlock(self.in_channels,
-                                  out_channels, stride, dropout_rate))
-
-                else:
-
-                    layers.append(BasicBlock(
-                        out_channels, out_channels, 1, dropout_rate))
-
-                self.in_channels = out_channels
-
-            return nn.Sequential(*layers)
-
-        def forward(self, x):
-
-            x = self.conv1(x)
-            x = self.layer1(x)
-            x = self.layer2(x)
-            x = self.layer3(x)
-            x = self.bn(x)
-            x = self.relu(x)
-            x = self.avgpool(x)
-            x = torch.flatten(x, 1)
-            x = self.fc(x)
-
+            x = x.view(-1, 28 * 28)
+            x = self.relu(self.fc1(x))
+            x = self.relu(self.fc2(x))
+            x = self.relu(self.fc3(x))
+            x = self.fc4(x)
             return x
 
     batch_size = 256
     randomized = True
     num_classes = 10
-    num_epochs = 300
-    widen_factor = 5
-    weight_decay = 0.0005
+    num_epochs = 100
+    weight_decay = 5e-4
     lr_step = 0.1
     dropout_rate = 0.3
-    schedule = [60, 120, 180, 240]
+    schedule = [60]
     lr = 0.1
     shuffle = True
 
@@ -317,21 +166,20 @@ if __name__ == '__main__':
         np.random.seed(0)
         shuffle = False
 
-    trainset = torchvision.datasets.CIFAR10(
-        root='./data', train=True, transform=transform_train)
+    trainset = torchvision.datasets.MNIST(
+        root='./data', train=True, transform=transform)
     trainloader = torch.utils.data.DataLoader(
-        trainset, batch_size=batch_size, shuffle=shuffle, num_workers=4, persistent_workers=True, prefetch_factor=4, pin_memory=True)
+        trainset, batch_size=batch_size, shuffle=shuffle, num_workers=5, persistent_workers=True, prefetch_factor=4, pin_memory=True)
     trainloader0 = torch.utils.data.DataLoader(
-        trainset, batch_size=2000, shuffle=False, num_workers=2, persistent_workers=True, prefetch_factor=2, pin_memory=True)
+        trainset, batch_size=2000, shuffle=False, num_workers=3, persistent_workers=True, prefetch_factor=2, pin_memory=True)
 
-    testset = torchvision.datasets.CIFAR10(
-        root='./data', train=False, transform=transform_test)
+    testset = torchvision.datasets.MNIST(
+        root='./data', train=False, transform=transforms.ToTensor())
     testloader = torch.utils.data.DataLoader(
         testset, batch_size=2000, shuffle=False, num_workers=2, persistent_workers=True, prefetch_factor=2, pin_memory=True)
 
     # Create an instance of the CNN model
-    model = SimpleCNN(num_classes=num_classes,
-                      widen_factor=widen_factor, dropout_rate=dropout_rate).cuda()
+    model = SimpleNet().cuda()
 
     # Define the loss function and optimizer
     criterion2 = CrossEntropyLossMask0().cuda()
@@ -547,7 +395,6 @@ if __name__ == '__main__':
     print(
         f'Generalization error of 0-1 loss: {np.abs(100 * (1 - (correct_test / total_test) - (1 - (correct / total))))}')
 
-print(f'Widen factor: {widen_factor}')
 print(f'Schedule: {schedule}')
 print(f'Epochs: {num_epochs}')
 print(f'Weight decay: {weight_decay}')
