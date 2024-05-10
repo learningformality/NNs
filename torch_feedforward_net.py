@@ -248,16 +248,9 @@ if __name__ == '__main__':
                 non_blocking=True), data[1].cuda(non_blocking=True)
             optimizer.zero_grad()
 
-            # with autocast():
-
             outputs = model(inputs)
             loss = criterion(outputs, labels)
 
-            # scaler.scale(loss).backward()
-            # scaler.unscale_(optimizer)
-            # nn.utils.clip_grad_norm_(model.parameters(), clip_threshold)
-            # scaler.step(optimizer)
-            # scaler.update()
             loss.backward()
             optimizer.step()
 
@@ -414,7 +407,7 @@ if __name__ == '__main__':
         f'Confidence on the test set: {running_test_conf / total_test: .5f}')
 
     print(
-        f'Generalization error of CE loss: {np.abs(running_test_loss / total_test - running_loss / total_test)}')
+        f'Generalization error of CE loss: {np.abs(running_test_loss / total_test - running_loss / total)}')
     print(
         f'Generalization error of 0-1 loss: {np.abs(100 * (1 - (correct_test / total_test) - (1 - (correct / total))))}')
 

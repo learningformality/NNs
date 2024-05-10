@@ -9,6 +9,11 @@ import matplotlib.pyplot as plt
 from torch.cuda.amp import autocast, GradScaler
 from tqdm import tqdm
 import numpy as np
+import warnings
+from opacus import PrivacyEngine
+from opacus.validators import ModuleValidator
+
+warnings.simplefilter("ignore")
 
 if __name__ == '__main__':
 
@@ -216,11 +221,9 @@ if __name__ == '__main__':
 
             super(BasicBlock, self).__init__()
 
-            self.bn1 = nn.BatchNorm2d(in_channels)
             self.relu1 = nn.ReLU(inplace=True)
             self.conv1 = nn.Conv2d(
                 in_channels, out_channels, kernel_size=3, stride=stride, padding=1, bias=False)
-            self.bn2 = nn.BatchNorm2d(out_channels)
             self.relu2 = nn.ReLU(inplace=True)
             self.conv2 = nn.Conv2d(
                 out_channels, out_channels, kernel_size=3, stride=1, padding=1, bias=False)
@@ -236,9 +239,9 @@ if __name__ == '__main__':
 
         def forward(self, x):
 
-            out = self.relu1(self.bn1(x))
+            out = self.relu1(x)
             out = self.conv1(out)
-            out = self.relu2(self.bn2(out))
+            out = self.relu2(out)
             out = self.dropout(out)
             out = self.conv2(out)
             out += self.shortcut(x)
@@ -247,7 +250,7 @@ if __name__ == '__main__':
 
     class SimpleCNN(nn.Module):
 
-        def __init__(self, num_classes=10, widen_factor=10, dropout_rate=0.3):
+        def __init__(self, num_classes=10, widen_factor=10, dropout_rate=0.0):
 
             super(SimpleCNN, self).__init__()
 
@@ -260,7 +263,6 @@ if __name__ == '__main__':
                 32 * widen_factor, 2, dropout_rate, 4)
             self.layer3 = self._make_layer(
                 64 * widen_factor, 2, dropout_rate, 4)
-            self.bn = nn.BatchNorm2d(64 * widen_factor)
             self.relu = nn.ReLU(inplace=True)
             self.avgpool = nn.AdaptiveAvgPool2d((1, 1))
             self.fc = nn.Linear(64 * widen_factor, num_classes)
@@ -291,7 +293,6 @@ if __name__ == '__main__':
             x = self.layer1(x)
             x = self.layer2(x)
             x = self.layer3(x)
-            x = self.bn(x)
             x = self.relu(x)
             x = self.avgpool(x)
             x = torch.flatten(x, 1)
@@ -299,17 +300,21 @@ if __name__ == '__main__':
 
             return x
 
-    batch_size = 256
+    batch_size = 64
     randomized = True
     num_classes = 10
-    num_epochs = 300
-    widen_factor = 5
+    num_epochs = 200
     weight_decay = 0.0005
+    widen_factor = 6
     lr_step = 0.1
-    dropout_rate = 0.3
-    schedule = [60, 120, 180, 240]
+    schedule = [60, 120, 180]
+    dropout_rate = 0.0
     lr = 0.1
     shuffle = True
+    private = False
+    epsilon = 50
+    delta = 1e-5
+    interval = 5
 
     if randomized == False:
 
@@ -320,9 +325,9 @@ if __name__ == '__main__':
     trainset = torchvision.datasets.CIFAR10(
         root='./data', train=True, transform=transform_train)
     trainloader = torch.utils.data.DataLoader(
-        trainset, batch_size=batch_size, shuffle=shuffle, num_workers=4, persistent_workers=True, prefetch_factor=4, pin_memory=True)
+        trainset, batch_size=batch_size, shuffle=shuffle, num_workers=5, persistent_workers=True, prefetch_factor=4, pin_memory=True)
     trainloader0 = torch.utils.data.DataLoader(
-        trainset, batch_size=2000, shuffle=False, num_workers=2, persistent_workers=True, prefetch_factor=2, pin_memory=True)
+        trainset, batch_size=2000, shuffle=False, num_workers=3, persistent_workers=True, prefetch_factor=2, pin_memory=True)
 
     testset = torchvision.datasets.CIFAR10(
         root='./data', train=False, transform=transform_test)
@@ -332,6 +337,11 @@ if __name__ == '__main__':
     # Create an instance of the CNN model
     model = SimpleCNN(num_classes=num_classes,
                       widen_factor=widen_factor, dropout_rate=dropout_rate).cuda()
+
+    if private == True:
+
+        model = ModuleValidator.fix(model)
+        ModuleValidator.validate(model, strict=False)
 
     # Define the loss function and optimizer
     criterion2 = CrossEntropyLossMask0().cuda()
@@ -346,32 +356,39 @@ if __name__ == '__main__':
         optimizer, schedule, gamma=lr_step)
     a = torch.tensor(0.1)
 
-    confs = torch.zeros((num_epochs, 2))
-    losses = torch.zeros((num_epochs, 2))
-    test_confs = torch.zeros((num_epochs, 2))
-    test_losses = torch.zeros((num_epochs, 2))
-    gen_confs = torch.zeros((num_epochs, 2))
-    gen_losses = torch.zeros((num_epochs, 2))
-    gen_acc = torch.zeros((num_epochs, 2))
-    train_accs = torch.zeros((num_epochs, 2))
-    test_accs = torch.zeros((num_epochs, 2))
+    confs = torch.zeros((int(num_epochs / interval) + 1, 2))
+    losses = torch.zeros((int(num_epochs / interval) + 1, 2))
+    test_confs = torch.zeros((int(num_epochs / interval) + 1, 2))
+    test_losses = torch.zeros((int(num_epochs / interval) + 1, 2))
+    gen_confs = torch.zeros((int(num_epochs / interval) + 1, 2))
+    gen_losses = torch.zeros((int(num_epochs / interval) + 1, 2))
+    gen_acc = torch.zeros((int(num_epochs / interval) + 1, 2))
+    train_accs = torch.zeros((int(num_epochs / interval) + 1, 2))
+    test_accs = torch.zeros((int(num_epochs / interval) + 1, 2))
     t0 = time.time()
     torch.backends.cudnn.benchmark = True
     clip_threshold = 0.5
-    progress_bar = tqdm(range(num_epochs), desc="Training", unit="epoch")
+    progress_bar = tqdm(range(num_epochs + 1), desc="Training", unit="epoch")
+
+    if private == True:
+
+        privacy_engine = PrivacyEngine()
+
+        model, optimizer, trainloader = privacy_engine.make_private_with_epsilon(
+            module=model,
+            optimizer=optimizer,
+            data_loader=trainloader,
+            epochs=num_epochs,
+            target_epsilon=epsilon,
+            target_delta=delta,
+            max_grad_norm=1,
+        )
+
+    cnt = 0
 
     for epoch in progress_bar:
 
         model.train()
-
-        running_loss = 0.0
-        running_conf = 0.0
-        running_test_loss = 0.0
-        running_test_conf = 0.0
-        correct = 0.0
-        correct_test = 0.0
-        total = 0.0
-        total_test = 0.0
 
         for data in trainloader:
 
@@ -392,76 +409,90 @@ if __name__ == '__main__':
 
         scheduler.step()
 
-        model.eval()
+        if epoch % interval == 0:
 
-        with torch.no_grad():
+            running_loss = 0.0
+            running_conf = 0.0
+            running_test_loss = 0.0
+            running_test_conf = 0.0
+            correct = 0.0
+            correct_test = 0.0
+            total = 0.0
+            total_test = 0.0
 
-            for data in trainloader0:
+            model.eval()
 
-                images, labels = data[0].cuda(
-                    non_blocking=True), data[1].cuda(non_blocking=True)
+            with torch.no_grad():
 
-                with autocast():
+                for data in trainloader0:
 
-                    outputs = model(images)
+                    images, labels = data[0].cuda(
+                        non_blocking=True), data[1].cuda(non_blocking=True)
 
-                    loss = criterion_eval(outputs, labels)
-                    conf = criterion0_eval(outputs, labels)
+                    with autocast():
 
-                _, predicted = torch.max(outputs.data, 1)
-                total += labels.size(0)
-                correct += (predicted == labels).sum().item()
+                        outputs = model(images)
 
-                running_conf += conf.item()
-                running_loss += loss.item()
+                        loss = criterion_eval(outputs, labels)
+                        conf = criterion0_eval(outputs, labels)
 
-        with torch.no_grad():
+                    _, predicted = torch.max(outputs.data, 1)
+                    total += labels.size(0)
+                    correct += (predicted == labels).sum().item()
 
-            for data in testloader:
+                    running_conf += conf.item()
+                    running_loss += loss.item()
 
-                images, labels = data[0].cuda(
-                    non_blocking=True), data[1].cuda(non_blocking=True)
+            with torch.no_grad():
 
-                with autocast():
+                for data in testloader:
 
-                    outputs = model(images)
+                    images, labels = data[0].cuda(
+                        non_blocking=True), data[1].cuda(non_blocking=True)
 
-                    loss = criterion_eval(outputs, labels)
-                    conf = criterion0_eval(outputs, labels)
+                    with autocast():
 
-                _, predicted = torch.max(outputs.data, 1)
-                total_test += labels.size(0)
-                correct_test += (predicted == labels).sum().item()
+                        outputs = model(images)
 
-                running_test_conf += conf.item()
-                running_test_loss += loss.item()
+                        loss = criterion_eval(outputs, labels)
+                        conf = criterion0_eval(outputs, labels)
 
-        if epoch % 10 == 0 and epoch > 0:
+                    _, predicted = torch.max(outputs.data, 1)
+                    total_test += labels.size(0)
+                    correct_test += (predicted == labels).sum().item()
 
-            t1 = time.time()
-            print(
-                f'Epoch [{epoch}/{num_epochs}], Train Accuracy: {100 * correct / total:.5f}, Test Accuracy: {100 * correct_test / total_test:.5f}')
-            print(
-                f'Epoch [{epoch}/{num_epochs}], Train Loss: {running_loss / total:.5f}, Train Confidence: {running_conf / total:.5f}')
-            print(
-                f'Epoch [{epoch}/{num_epochs}], Test Loss: {running_test_loss / total_test:.5f}, Test Confidence: {running_test_conf / total_test:.5f}')
-            print(f'Time for 10 epochs: {t1 - t0}')
-            t0 = time.time()
+                    running_test_conf += conf.item()
+                    running_test_loss += loss.item()
 
-        confs[epoch] = torch.tensor([epoch, running_conf / total])
-        losses[epoch] = torch.tensor([epoch, running_loss / total])
-        test_confs[epoch] = torch.tensor(
-            [epoch, running_test_conf / total_test])
-        test_losses[epoch] = torch.tensor(
-            [epoch, running_test_loss / total_test])
-        gen_confs[epoch] = torch.tensor([epoch, np.abs(
-            running_test_conf / total_test - running_conf / total)])
-        gen_losses[epoch] = torch.tensor([epoch, np.abs(
-            running_test_loss / total_test - running_loss / total)])
-        gen_acc[epoch] = torch.tensor([epoch, np.abs(
-            100 * (1 - (correct_test / total_test) - (1 - (correct / total))))])
-        train_accs[epoch] = torch.tensor([epoch, correct / total])
-        test_accs[epoch] = torch.tensor([epoch, correct_test / total_test])
+            confs[cnt] = torch.tensor([int(epoch), running_conf / total])
+            losses[cnt] = torch.tensor([int(epoch), running_loss / total])
+            test_confs[cnt] = torch.tensor(
+                [int(epoch), running_test_conf / total_test])
+            test_losses[cnt] = torch.tensor(
+                [int(epoch), running_test_loss / total_test])
+            gen_confs[cnt] = torch.tensor([int(epoch), np.abs(
+                running_test_conf / total_test - running_conf / total)])
+            gen_losses[cnt] = torch.tensor([int(epoch), np.abs(
+                running_test_loss / total_test - running_loss / total)])
+            gen_acc[cnt] = torch.tensor([int(epoch), np.abs(
+                100 * (1 - (correct_test / total_test) - (1 - (correct / total))))])
+            train_accs[cnt] = torch.tensor([int(epoch), correct / total])
+            test_accs[cnt] = torch.tensor(
+                [int(epoch), correct_test / total_test])
+
+            if epoch % 10 == 0 and epoch > 0:
+
+                t1 = time.time()
+                print(
+                    f'Epoch [{epoch}/{num_epochs}], Train Accuracy: {100 * correct / total:.5f}, Test Accuracy: {100 * correct_test / total_test:.5f}')
+                print(
+                    f'Epoch [{epoch}/{num_epochs}], Train Loss: {running_loss / total:.5f}, Train Confidence: {running_conf / total:.5f}')
+                print(
+                    f'Epoch [{epoch}/{num_epochs}], Test Loss: {running_test_loss / total_test:.5f}, Test Confidence: {running_test_conf / total_test:.5f}')
+                print(f'Time for 10 epochs: {t1 - t0}')
+                t0 = time.time()
+
+            cnt += 1
 
     print('Training finished')
 
@@ -557,13 +588,13 @@ print(f'Learning rate step: {lr_step}')
 print(f'Random: {randomized}')
 print(f'Batch size: {batch_size}')
 
-
 fig, axs = plt.subplots()
 
-axs.plot(confs[:, 0], confs[:, 1], 'y-', label='Tr. Confidences')
-axs.plot(losses[:, 0], losses[:, 1], 'r-', label='Tr. Losses')
-axs.plot(test_confs[:, 0], test_confs[:, 1], 'g-', label='Te. Confidences')
-axs.plot(test_losses[:, 0], test_losses[:, 1], 'b-', label='Te. Losses')
+axs.plot(confs[:, 0].int(), confs[:, 1], 'y-', label='Tr. Confidences')
+axs.plot(losses[:, 0].int(), losses[:, 1], 'r-', label='Tr. Losses')
+axs.plot(test_confs[:, 0].int(), test_confs[:, 1],
+         'g-', label='Te. Confidences')
+axs.plot(test_losses[:, 0].int(), test_losses[:, 1], 'b-', label='Te. Losses')
 axs.set_xlabel('Epoch')
 axs.set_ylabel('Value')
 axs.set_title('Confidences and Losses')
@@ -573,9 +604,9 @@ plt.grid()
 
 fig, ax = plt.subplots()
 
-ax.plot(gen_confs[:, 0], gen_confs[:, 1], 'b-', label='Gen. Confidences')
-ax.plot(gen_losses[:, 0], gen_losses[:, 1], 'r-', label='Gen. Losses')
-ax.plot(gen_acc[:, 0], gen_acc[:, 1], 'g-', label='Gen. Accuracies')
+ax.plot(gen_confs[:, 0].int(), gen_confs[:, 1], 'b-', label='Gen. Confidences')
+ax.plot(gen_losses[:, 0].int(), gen_losses[:, 1], 'r-', label='Gen. Losses')
+ax.plot(gen_acc[:, 0].int(), gen_acc[:, 1], 'g-', label='Gen. Accuracies')
 ax.set_xlabel('Epoch')
 ax.set_ylabel('Value')
 ax.set_title('Generalization')
@@ -585,8 +616,9 @@ plt.grid()
 
 fig1, ax1 = plt.subplots()
 
-ax1.plot(test_accs[:, 0], test_accs[:, 1], 'b-', label='Test Accuracy')
-ax1.plot(train_accs[:, 0], train_accs[:, 1], 'r-', label='Train Accuracy')
+ax1.plot(test_accs[:, 0].int(), test_accs[:, 1], 'b-', label='Test Accuracy')
+ax1.plot(train_accs[:, 0].int(), train_accs[:, 1],
+         'r-', label='Train Accuracy')
 ax1.set_xlabel('Epoch')
 ax1.set_ylabel('Value')
 ax1.set_title('Accuracy')
