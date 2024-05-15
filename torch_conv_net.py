@@ -12,6 +12,7 @@ import numpy as np
 import warnings
 from opacus import PrivacyEngine
 from opacus.validators import ModuleValidator
+from scipy.stats import lognorm
 
 warnings.simplefilter("ignore")
 
@@ -300,12 +301,12 @@ if __name__ == '__main__':
 
             return x
 
-    batch_size = 64
+    batch_size = 256
     randomized = True
     num_classes = 10
-    num_epochs = 200
+    num_epochs = 10
     weight_decay = 0.0005
-    widen_factor = 6
+    widen_factor = 1
     lr_step = 0.1
     schedule = [60, 120, 180]
     dropout_rate = 0.0
@@ -628,10 +629,19 @@ plt.grid()
 
 fig2, ax2 = plt.subplots()
 
+x = np.linspace(np.min(np.concatenate((remove_inf_values(logits_test).cpu().numpy(), remove_inf_values(logits_train).cpu().numpy()), axis=0)),
+                np.max(np.concatenate((remove_inf_values(logits_test).cpu().numpy(), remove_inf_values(logits_train).cpu().numpy()), axis=0)), 1000)
+
+shape0, loc0, scale0 = lognorm.fit(remove_inf_values(logits_test).cpu())
+shape1, loc1, scale1 = lognorm.fit(remove_inf_values(logits_train).cpu())
+
 ax2.hist(remove_inf_values(logits_test).cpu(),
          bins=50, density=True, label='Test Logits')
 ax2.hist(remove_inf_values(logits_train).cpu(),
          bins=50, density=True, label='Train Logits')
+ax2.plot(x, lognorm.pdf(x, shape0, loc0, scale0))
+ax2.plot(x, lognorm.pdf(x, shape1, loc1, scale1))
+
 ax2.set_title('Logits')
 ax2.legend()
 
